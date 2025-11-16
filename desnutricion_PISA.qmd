@@ -243,7 +243,6 @@ desnutri_tiempo2 <- desnutri_tiempo %>%
   group_by(indicador) %>% 
   mutate(valor_interp = zoo::na.approx(valor, ID1, na.rm = FALSE))
 
-
 ```
 
 ```{r Gráfico}
@@ -395,6 +394,7 @@ ggsave(g1,
        dpi = 600)
 
 ```
+
 
 
 
