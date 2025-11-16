@@ -1,0 +1,402 @@
+---
+title: "Desnutrición crónica y rendimiento en PISA"
+format: html
+---
+
+```{r Configuración inicial}
+
+# Limpia el entorno de trabajo de R #
+#-----------------------------------#
+
+rm(list=ls()) 
+
+options(scipen = 999)
+# Configura las opciones globales para los chunks de código en un documento #
+#---------------------------------------------------------------------------#
+
+knitr::opts_chunk$set(echo=TRUE,      # Hace que el código del chunk se muestre en el documento final.
+                      warning=FALSE,  # Suprime la visualización de advertencias generadas en el documento final.
+                      message=FALSE)  # Evita que se muestren mensajes en el documento final.
+```
+
+```{r Librerías, message=FALSE, warning=FALSE}
+
+library(foreign)    # Importar y exportar bases de spss
+library(openxlsx)   # Facilita la lectura de archivos de Excel (".xls" y ".xlsx")
+library(fst)        # Abre archivos ".fst, que son extremadamente rápidos para guardar y cargar grandes conjuntos de datos
+library(tidyverse)  # Un conjunto de paquetes interrelacionados diseñados para análisis de datos
+library(ggplot2)    # Para crear gráficos
+library(ggtext)     # Extiende las capacidades de personalización de texto en gráficos creados con ggplot2
+library(ggpubr)     # Proporciona funciones de alto nivel para crear gráficos de publicación con ggplot2
+library(gt)         # Permite convertir data.tables en tablas con un formato bonito
+library(survey)     # Permite analizar datos provenientes de muestras complejas
+library(ggh4x)      # Permite mejorar la estética de los gráficos
+library(legendry)   # Permite crear y posicionar leyendas personalizadas en gráficos
+library(Hmisc)      # Herramientas para análisis de datos
+library(ggridges)   # Extiende ggplot2 para crear gráficos de densidad por grupos
+library(stringi)    # Permite manipulación de cadenas de texto
+library(patchwork)  # Permite combinar gráficos
+library(ggrepel)    # Permite crear etiquetas con distanciamiento automático 
+library(scales)     # Permite editar tonos, formatos de número y texto
+library(sanzo)      # Paleta de combinación de colores de Sanzo Wada
+library(sf)         # Permite graficar mapas 
+library(convey)     # Para calcular medidas de desigualdad, pobreza y bienestar
+library(MLMusingR)
+library(broom)
+library(mapsPERU)
+library(packcircles)
+library(zip)
+library(haven)
+library(labeling)
+
+``` 
+
+```{r Llamado de funciones}
+
+source(url("https://raw.githack.com/Manumarc/Resultados-ENLA/main/funciones.R"))
+
+devtools::source_url("https://raw.githubusercontent.com/Manumarc/Indicadores-educativos-con-la-Enaho/refs/heads/main/funciones_enaho.R")
+
+```
+
+```{r Funciones especiales}
+
+#====================================================================================#
+# FUNCIÓN PARA LLAMADO DE BASES
+#====================================================================================#
+
+llamado_bases <- function(nom_lista){
+  
+  # Filtrar solo los archivos existentes
+  bases_exist <- nom_lista[file.exists(nom_lista)]
+  
+  # Años de las bases que existen
+  años <- str_extract(bases_exist, "\\d{4}") %>% 
+    as.numeric()
+  
+  # Leer únicamente los que existen
+  bd1 <- map2(
+    bases_exist,
+    años,
+    ~{
+      bd <- read_sav(.x)
+      
+      if (!"ID1" %in% names(bd)) {
+        
+        bd <- bd %>% mutate(ID1 = .y)
+        
+      }
+      
+      bd
+      
+    }
+  )
+  
+  return(bd1)
+  
+}
+
+```
+
+```{r Descarga bases Endes}
+
+# info.encuesta("Endes",c(2007))
+
+# descargar_bases("Endes",c(2006:2024),c("1629","1630","1638","64","65","74"))
+
+
+```
+
+```{r Bases de datos}
+
+#=======================================#
+# Bases de datos
+#=======================================#
+
+# Nombres de bases
+
+list_rech0 <- c(paste0("01 Bases/RECH0_",2007:2024,".sav"))
+list_rech1 <- c(paste0("01 Bases/RECH1_",2007:2024,".sav"))
+list_rech4 <- c(paste0("01 Bases/RECH4_",2007:2024,".sav"))
+list_rech6 <- c(paste0("01 Bases/RECH6_",2007:2024,".sav"))
+list_rech23 <- c(paste0("01 Bases/RECH23_",2007:2024,".sav"))
+
+# Listas de bases
+
+bd_rech0 <- llamado_bases(list_rech0)
+bd_rech1 <- llamado_bases(list_rech1)
+bd_rech4 <- llamado_bases(list_rech4)
+bd_rech6 <- llamado_bases(list_rech6)
+bd_rech23 <- llamado_bases(list_rech23)
+
+
+
+```
+
+```{r Construcción de base de datos}
+
+# Integración de bases # 
+#----------------------#
+
+a1 <- map2(
+  bd_rech23,
+  bd_rech0,
+  ~left_join(.x, .y, by = c("ID1","HHID"))
+)
+
+a_int <- pmap(
+  list(bd_rech4, bd_rech1, bd_rech6, a1),
+  ~{
+    ..1 %>%
+      rename(HVIDX = IDXH4) %>%
+      left_join(..2, by = c("ID1","HHID", "HVIDX")) %>%
+      rename(HC0 = HVIDX) %>%
+      left_join(..3, by = c("ID1","HHID", "HC0")) %>%
+      left_join(..4, by = c("ID1","HHID")) %>%
+      mutate_at(vars(HV103, HC70, HC72, HC71), as.character) %>%
+      mutate_at(vars(HC70, HC72, HC71), as.numeric) %>% 
+      rename_with(~"HV005", matches("^hv005$", ignore.case = TRUE)) %>% 
+      rename_with(~"HV022", matches("^hv022$", ignore.case = TRUE))
+  }
+)
+
+# Construcción de indicador de desnutrición #
+#-------------------------------------------#
+
+bd_desnutri <- map(
+    a_int,
+    ~.x %>% 
+      filter(#No se consideran valores atípicos
+        HC70 < 9996) %>%  
+      mutate(# Cálculo de la población válida para el cálculo de desnutrición crónica
+        pob_val = case_when(HV103 == "1" ~ "Válida",
+                            TRUE ~ NA_character_),
+        desn_cronica = case_when(
+          !is.na(pob_val) & HC70 < -200 ~ "Con desnutrición",
+          !is.na(pob_val) ~ "Sin desnutrición",
+          TRUE ~ NA_character_
+        ), 
+        peso = HV005/1000000
+      )
+  )
+
+# Especificar el diseño muestral #
+#--------------------------------#
+
+options(survey.lonely.psu = "certainty")
+
+# Cálculo de desnutrición a nivel nacional # 
+#------------------------------------------#
+
+res_desnutri <- map(
+  bd_desnutri,
+  ~{
+    dmuestral <- svydesign(
+      ids = ~HV001,
+      strata = ~HV022,
+      weights = ~peso,
+      data = .x,
+      nest = TRUE
+    )
+    
+    svyby(
+      ~desn_cronica,
+      ~ID1,
+      svymean,
+      design = dmuestral,
+      na.rm = TRUE
+    )
+  }
+)
+
+# Rendimiento de PISA (Lectura) en el tiempo #
+#--------------------------------------------#
+
+pisa_lec <- 
+  data.frame(
+    ID1 = c(2009,2012,2015,2018,2022),
+    nivel2_mas = c(35.2,40.1,46.1,45.7,49.7)
+  )
+
+# Integración de bases de desnutrición y rendimiento # 
+#----------------------------------------------------#
+
+# Base para puntos
+desnutri_tiempo <- res_desnutri %>% 
+  bind_rows() %>% 
+  rename(
+    desnutricion = `desn_cronicaCon desnutrición`,
+    se_desnutri = `se.desn_cronicaCon desnutrición`
+  ) %>% 
+  mutate(
+    desnutricion = desnutricion*100,
+    se_desnutri = se_desnutri*100
+  ) %>% 
+  left_join(pisa_lec, by = "ID1") %>% 
+  dplyr::select(ID1,desnutricion,nivel2_mas) %>% 
+  pivot_longer(
+    cols = 2:3,
+    names_to = "indicador",
+    values_to = "valor"
+  )
+
+# Base para líneas 
+desnutri_tiempo2 <- desnutri_tiempo %>% 
+  group_by(indicador) %>% 
+  mutate(valor_interp = zoo::na.approx(valor, ID1, na.rm = FALSE))
+
+
+```
+
+```{r Gráfico}
+
+g1 <-
+  ggplot(desnutri_tiempo2, aes(x = ID1, y = valor_interp, color = indicador)) +
+  geom_line(
+    lwd = 0.8,
+  ) +
+  geom_point(
+    data = desnutri_tiempo,
+    aes(x = ID1, y = valor, color = indicador),
+    size = 3.5
+  ) +
+  scale_y_continuous(
+    limits = c(0,100),
+    labels = function(x) format(x, nsmall = 1, decimal.mark = ",")
+  ) + 
+  scale_x_continuous(
+    limits = c(2006,2024),
+    breaks = seq(2007,2024, by = 1),
+    expand = expansion(add = c(0,1))
+  ) +
+  scale_color_manual(
+    values = sanzo.duo("c114"),
+    breaks = c("desnutricion","nivel2_mas"),
+    labels = c("Desnutrición","Nivel 2 a más")
+  ) +
+  theme_bw() + 
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10,
+                               color = "#626262"),
+    axis.title = element_blank(),
+    axis.text.x = element_text(size = 8,
+                               color = "#626262"),
+    axis.text.y = element_text(size = 10,
+                               color = "#626262"),
+    axis.ticks = element_blank(),
+    plot.title.position = "plot",
+    plot.caption.position = "plot",
+    plot.title = element_text(size = 12,
+                              color = "#626262",
+                              face = "bold"),
+    plot.subtitle = element_text(size = 10,
+                                 color = "#626262"),
+    plot.caption = element_text(hjust = 0,
+                                size = 6.0,
+                                color = "#626262",
+                                lineheight = 0.6)  # menor que 1 reduce el interlineado
+                                
+  ) + 
+  geom_text(
+    data = desnutri_tiempo %>% filter(indicador %in% "desnutricion"),
+    aes(
+      label = puntocoma2(valor,1),
+      x = ID1,
+      y = valor,
+      vjust = 2.2
+    ),
+    size = 3.0,
+    color = "#626262"
+  ) +
+  geom_text(
+    data = desnutri_tiempo %>% filter(!indicador %in% "desnutricion"),
+    aes(
+      label = puntocoma2(valor,1),
+      x = ID1,
+      y = valor,
+      vjust = -1.2
+    ),
+    size = 3.0,
+    color = "#626262"
+  ) + 
+  labs(
+    title = "Relación entre desnutrición crónica en menores de 5 años y resultados en Competencia lectora en PISA",
+    subtitle = "Periodo 2007-2024",
+    caption = "Fuente: Encuesta demográfica y de salud familia - Endes (INEI) y Resultados nacionales de PISA (UMC - Minedu).
+    \nNota. El cálculo de la desnutrición crónica para el año 2020 puede no coincidir con las cifras oficiales reportadas por el INEI."
+  ) + 
+  annotate(
+    geom = "rect",
+    xmin = 2021.5,
+    xmax = 2022.5,
+    ymin = 42.4,
+    ymax = 57,
+    fill = NA,
+    color = "#727272",
+    linewidth = 0.3,
+    linetype = "dashed"
+  ) +
+  annotate(
+    geom = "rect",
+    xmin = 2006.5,
+    xmax = 2011.5,
+    ymin = 10,
+    ymax = 33,
+    fill = NA,
+    color = "#727272",
+    linewidth = 0.3,
+    linetype = "dashed"
+  ) +
+  annotate(
+  geom = "segment",
+  x = 2006.5,
+  xend = 2021.5,
+  y = 70,
+  yend = 70,
+  color = "#727272",
+  linewidth = 0.3,
+  linetype = "dashed"
+) +
+  annotate(
+  geom = "segment",
+  x = 2021.5,
+  xend = 2021.5,
+  y = 57,
+  yend = 70,
+  color = "#727272",
+  linewidth = 0.3,
+  linetype = "dashed"
+) +
+  annotate(
+  geom = "segment",
+  x = 2006.5,
+  xend = 2006.5,
+  y = 33.0,
+  yend = 70,
+  color = "#727272",
+  linewidth = 0.3,
+  linetype = "dashed"
+) + 
+  annotate(
+    geom = "text",
+    x = 2006.5,
+    y = 77,
+    label = str_wrap("Los estudiantes que participaron en PISA 2022 transitaron sus primeros 5 años de vida entre 2007 y 2011, periodo que coincide con una reducción importante de la desnutrición en menores de 5 años a nivel nacional.", width = 75),
+    hjust = 0.0,
+    size = 2.5,
+    color = "#626262"
+  )
+
+ggsave(g1,
+       filename = "02 Gráficos/desnutricion.png",
+       w = 10,
+       h = 6,
+       dpi = 600)
+
+```
+
+
+
