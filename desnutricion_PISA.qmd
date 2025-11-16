@@ -1,5 +1,6 @@
 ---
 title: "Desnutrición crónica y rendimiento en PISA"
+author: "Manuel Marcos"
 format: html
 ---
 
@@ -397,6 +398,7 @@ ggsave(g1,
        dpi = 600)
 
 ```
+
 
 
 
