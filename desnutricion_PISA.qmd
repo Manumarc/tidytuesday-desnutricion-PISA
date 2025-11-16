@@ -320,7 +320,7 @@ g1 <-
     color = "#626262"
   ) + 
   labs(
-    title = "Relación entre desnutrición crónica en menores de 5 años y resultados en Competencia lectora en PISA",
+    title = str_wrap("Relación entre desnutrición crónica en menores de 5 años y resultados en Competencia lectora en PISA", witdh = 120),
     subtitle = "Periodo 2007-2024",
     caption = "Fuente: Encuesta demográfica y de salud familia - Endes (INEI) y Resultados nacionales de PISA (UMC - Minedu).
     \nNota. El cálculo de la desnutrición crónica para el año 2020 puede no coincidir con las cifras oficiales reportadas por el INEI."
@@ -394,6 +394,7 @@ ggsave(g1,
        dpi = 600)
 
 ```
+
 
 
 
