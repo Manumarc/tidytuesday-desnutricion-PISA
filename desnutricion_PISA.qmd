@@ -105,7 +105,6 @@ llamado_bases <- function(nom_lista){
 
 # descargar_bases("Endes",c(2006:2024),c("1629","1630","1638","64","65","74"))
 
-
 ```
 
 ```{r Bases de datos}
@@ -129,8 +128,6 @@ bd_rech1 <- llamado_bases(list_rech1)
 bd_rech4 <- llamado_bases(list_rech4)
 bd_rech6 <- llamado_bases(list_rech6)
 bd_rech23 <- llamado_bases(list_rech23)
-
-
 
 ```
 
@@ -398,6 +395,7 @@ ggsave(g1,
        dpi = 600)
 
 ```
+
 
 
 
