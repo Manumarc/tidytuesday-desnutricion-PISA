@@ -40,12 +40,6 @@ library(patchwork)  # Permite combinar gráficos
 library(ggrepel)    # Permite crear etiquetas con distanciamiento automático 
 library(scales)     # Permite editar tonos, formatos de número y texto
 library(sanzo)      # Paleta de combinación de colores de Sanzo Wada
-library(sf)         # Permite graficar mapas 
-library(convey)     # Para calcular medidas de desigualdad, pobreza y bienestar
-library(MLMusingR)
-library(broom)
-library(mapsPERU)
-library(packcircles)
 library(zip)
 library(haven)
 library(labeling)
@@ -394,6 +388,7 @@ ggsave(g1,
        dpi = 600)
 
 ```
+
 
 
 
